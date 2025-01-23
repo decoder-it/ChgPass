@@ -47,7 +47,8 @@ In this example:
 - The domain to connect to is `mydomain.local`.
 - The domain controller to connect to is `dc1.mydomain.local`.
 - The target account `target_user` will have their password changed to `newpassword123`.
-
+## Warning
+chgpass uses SamrSetInformationUser2 (UserClass 18) for setting the NTLM password. It will zero out the kerberos keys and in case of a computer account it will break the domain join.
 ## License
 
 This tool is provided as-is with no warranty. Feel free to use and modify it as needed.
