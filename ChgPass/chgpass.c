@@ -284,7 +284,6 @@ int ChangeThePassword(int rid, BYTE *hash, char *dcname, BYTE *domainsid)
 	SAMPR_HANDLE hServer, hDomain;
 	
 	
-	SAMPR_USER_INTERNAL4_INFORMATION ub;
 	SAMPR_USER_INFO_BUFFER us;
 	SAMPR_REVISION_INFO inRevisionInfo, outRevisionInfo;
 	unsigned long outVersion;
@@ -320,9 +319,6 @@ int ChangeThePassword(int rid, BYTE *hash, char *dcname, BYTE *domainsid)
 		return 1;
 	}
 	//DumpHex(buffer, 16);
-	memset(&ub.UserPassword, 0, sizeof(ub.UserPassword));
-	
-	
 	
 	status = RtlEncryptNtOwfPwdWithUserKey(hash, buffer, encpw);
 	if (!NT_SUCCESS(status)) {
@@ -446,8 +442,8 @@ BOOL LogInAndImpersonateUser(
 	return TRUE;
 }
 void usage() {
-	wprintf(L"Usage:\n");
-	wprintf(L"  program.exe -u <user> -p <password> -d <domain> -t <target_user> -m <new_password> -c <domain_controller>\n");
+	wprintf(L"\n\n** chgpass - @decoder_it 2025 **\n\nUsage:\n");
+	wprintf(L"  chgpass.exe -u <user> -p <password> -d <domain> -t <target_user> -m <new_password> -c <domain_controller>\n");
 	wprintf(L"\nMandatory Arguments:\n");
 	wprintf(L"  -t <target_account>     Specify the target account to modify.\n");
 	wprintf(L"  -m <new_password>    Specify the new password for the target account.\n");
@@ -463,8 +459,6 @@ int main(int argc , char **argv)
 {
 	
 	//const char* password = "Password123";
-	BYTE lmHash[16] = { 0 };
-	BYTE ntHash[16] = { 0 };
 	BYTE domainsid[SECURITY_MAX_SID_SIZE];
 	char* user=NULL;
 	char* password=NULL;
