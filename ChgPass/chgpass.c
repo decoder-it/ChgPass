@@ -331,14 +331,14 @@ int ChangeThePassword(int rid, BYTE *hash, char *dcname, BYTE *domainsid)
 	}
 	
 	us.Internal1.NtPasswordPresent = 1;
-	us.Internal1.LmPasswordPresent = 1;
+	us.Internal1.LmPasswordPresent = 0;
 
 	memcpy(&us.Internal1.EncryptedNtOwfPassword, encpw, 16);
 	memcpy(&us.Internal1.EncryptedLmOwfPassword, encpw, 16);
-	us.Internal4.I1.WhichFields = toBigEndian(1);
+	//us.Internal4.I1.WhichFields = toBigEndian(1);
 	
    
-	memcpy(&us.Internal4.UserPassword, encpw, 16);
+	//memcpy(&us.Internal4.UserPassword, encpw, 16);
 	status = SamrSetInformationUser2(u, (USER_INFORMATION_CLASS)18, &us);
 	if (!NT_SUCCESS(status)) {
 		wprintf(L"[-] SamrSetInformationUser2 Error: %08X %d\n", status, GetLastError());
