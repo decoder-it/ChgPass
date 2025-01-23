@@ -15,6 +15,7 @@
 #pragma comment(lib, "ntdll.lib")
 #pragma comment(lib, "Secur32.lib")
 #pragma comment(lib, "Ntdsapi.lib")
+#pragma comment(lib, "netapi32.lib") 
 #pragma warning(disable : 4996)
 #define MAXIMUM_ALLOWED 0x02000000
 #define RtlEncryptNtOwfPwdWithNtOwfPwd SystemFunction014
@@ -55,22 +56,24 @@ unsigned char newNT[16];
 unsigned char newLM[16];
 char DCName[256];
 char DCIp[65];
-unsigned long RID = 0;
+
 char DomainName[256];
-#pragma comment(lib, "netapi32.lib") // Link against Netapi32.lib
-void RemoveBackslashes(char* str) {
+
+void RemoveBackslashes(char* str) 
+{
 	char* src = str, * dst = str;
 
 	while (*src) {
-		if (*src != '\\') {  // If not a backslash, copy the character
+		if (*src != '\\') {  
 			*dst = *src;
 			dst++;
 		}
 		src++;
 	}
-	*dst = '\0';  // Null-terminate the modified string
+	*dst = '\0';  
 }
-BOOL GetCurrentDomainController() {
+BOOL GetCurrentDomainController() 
+{
 	PDOMAIN_CONTROLLER_INFOA pDcInfo = NULL;
 	DWORD dwError;
 
@@ -144,20 +147,6 @@ void DumpHex(const void* data, size_t size) {
 }
 
 
-BOOL StringToHex(IN LPCWCHAR string, IN LPBYTE hex, IN DWORD size)
-{
-	DWORD i, j;
-	BOOL result = (wcslen(string) == (size * 2));
-	if (result)
-	{
-		for (i = 0; i < size; i++)
-		{
-			swscanf_s(&string[i * 2], L"%02x", &j);
-			hex[i] = (BYTE)j;
-		}
-	}
-	return result;
-}
 
 void __RPC_FAR* __RPC_USER midl_user_allocate(size_t cBytes)
 {
@@ -190,7 +179,7 @@ handle_t __RPC_USER PSAMPR_SERVER_NAME_bind()
 		return NULL;
 	}
 
-	/* Set the binding handle that will be used to bind to the server. */
+	
 	status = RpcBindingFromStringBindingA(pszStringBinding,
 		&hBinding);
 	if (status)
@@ -200,25 +189,26 @@ handle_t __RPC_USER PSAMPR_SERVER_NAME_bind()
 	status = RpcStringFreeA(&pszStringBinding);
 	if (status)
 	{
-		printf("[-] RpcStringFree  0x%x\n", status);
+		printf("[-] RpcStringFree  0x%x-%d\n", status, GetLastError());
 	}
 
 	return hBinding;
 }
 long toBigEndian(int value) 
 {
-	return ((value & 0x000000FF) << 24) |  // Move the least significant byte to the most significant position
-		((value & 0x0000FF00) << 8) |  // Move the second byte to the second-most significant position
-		((value & 0x00FF0000) >> 8) |  // Move the third byte to the second-least significant position
-		((value & 0xFF000000) >> 24);   // Move the most significant byte to the least significant position
+	return ((value & 0x000000FF) << 24) |  
+		((value & 0x0000FF00) << 8) |  
+		((value & 0x00FF0000) >> 8) |  
+		((value & 0xFF000000) >> 24);  
 }
-BOOL CalculateNTLMHash(LPCSTR password, BYTE hash[16]) {
-	HCRYPTPROV hCryptProv = 0; // Handle to a cryptographic provider
-	HCRYPTHASH hHash = 0;      // Handle to a hash object
+BOOL CalculateNTLMHash(LPCSTR password, BYTE hash[16]) 
+{
+	HCRYPTPROV hCryptProv = 0; 
+	HCRYPTHASH hHash = 0;      
 	BOOL result = FALSE;
 
-	// Step 1: Convert the password to UTF-16LE
-	int passwordLength = (int)strlen(password); // Length of the password
+	
+	int passwordLength = (int)strlen(password); 
 	int unicodeLength = MultiByteToWideChar(CP_ACP, 0, password, passwordLength, NULL, 0);
 	if (unicodeLength == 0) {
 		printf("[-] CalculateNTLMHash: Error converting password to UTF-16LE. Error: %lu\n", GetLastError());
@@ -237,14 +227,14 @@ BOOL CalculateNTLMHash(LPCSTR password, BYTE hash[16]) {
 		return FALSE;
 	}
 
-	// Step 2: Acquire a cryptographic provider context
+	
 	if (!CryptAcquireContext(&hCryptProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
 		printf("[-] CalculateNTLMHash: CryptAcquireContext failed. Error: %lu\n", GetLastError());
 		free(unicodePassword);
 		return FALSE;
 	}
 
-	// Step 3: Create an MD4 hash object
+	
 	if (!CryptCreateHash(hCryptProv, CALG_MD4, 0, 0, &hHash)) {
 		printf("[-] CalculateNTLMHash: CryptCreateHash failed. Error: %lu\n", GetLastError());
 		CryptReleaseContext(hCryptProv, 0);
@@ -252,7 +242,7 @@ BOOL CalculateNTLMHash(LPCSTR password, BYTE hash[16]) {
 		return FALSE;
 	}
 
-	// Step 4: Hash the UTF-16LE password
+	
 	if (!CryptHashData(hHash, (BYTE*)unicodePassword, unicodeLength * sizeof(WCHAR), 0)) {
 		printf("[-] CalculateNTLMHash: CryptHashData failed. Error: %lu\n", GetLastError());
 		CryptDestroyHash(hHash);
@@ -261,16 +251,16 @@ BOOL CalculateNTLMHash(LPCSTR password, BYTE hash[16]) {
 		return FALSE;
 	}
 
-	// Step 5: Retrieve the resulting hash value
-	DWORD hashLen = 16; // MD4 produces a 16-byte hash
+	
+	DWORD hashLen = 16; 
 	if (CryptGetHashParam(hHash, HP_HASHVAL, hash, &hashLen, 0)) {
-		result = TRUE; // Successfully retrieved the hash
+		result = TRUE; 
 	}
 	else {
 		printf("[-] CalculateNTLMHash: CryptGetHashParam failed. Error: %lu\n", GetLastError());
 	}
 
-	// Cleanup
+	
 	CryptDestroyHash(hHash);
 	CryptReleaseContext(hCryptProv, 0);
 	free(unicodePassword);
@@ -285,11 +275,8 @@ PSAMPR_SERVER_NAME_unbind()
 	handle_t hBinding = NULL;
 	RPC_STATUS status;
 
-	status = RpcBindingFree(&hBinding);
-	if (status)
-	{
-		printf("[-] RpcBindingFree  0x%x\n", status);
-	}
+	RpcBindingFree(&hBinding);
+	
 }
 
 int ChangeThePassword(int rid, BYTE *hash, char *dcname, BYTE *domainsid)
@@ -301,7 +288,8 @@ int ChangeThePassword(int rid, BYTE *hash, char *dcname, BYTE *domainsid)
 	SAMPR_USER_INFO_BUFFER us;
 	SAMPR_REVISION_INFO inRevisionInfo, outRevisionInfo;
 	unsigned long outVersion;
-	PRPC_SID domainSID = 0;
+	
+	unsigned char encpw[16];
 	status = SamrConnect5(NULL,/*SAM_SERVER_CONNECT | SAM_SERVER_ENUMERATE_DOMAINS | SAM_SERVER_LOOKUP_DOMAIN*/ MAXIMUM_ALLOWED, 1, &inRevisionInfo, &outVersion, &outRevisionInfo, &hServer);
 	if(!NT_SUCCESS(status)) 
 	
@@ -334,7 +322,7 @@ int ChangeThePassword(int rid, BYTE *hash, char *dcname, BYTE *domainsid)
 	//DumpHex(buffer, 16);
 	memset(&ub.UserPassword, 0, sizeof(ub.UserPassword));
 	
-	unsigned char encpw[16];
+	
 	
 	status = RtlEncryptNtOwfPwdWithUserKey(hash, buffer, encpw);
 	if (!NT_SUCCESS(status)) {
