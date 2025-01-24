@@ -249,6 +249,7 @@ handle_t __RPC_USER PSAMPR_SERVER_NAME_bind()
 	{
 		printf("[-] RpcStringFree  0x%x-%d\n", status, GetLastError());
 	}
+	/*
 	status = RpcBindingSetAuthInfoA(
 		hBinding,
 		NULL,                              // Server principal name (NULL = use SPN)
@@ -261,7 +262,7 @@ handle_t __RPC_USER PSAMPR_SERVER_NAME_bind()
 	{
 		printf("[-]pcBindingSetAuthInfo  0x%x\n", status);
 	}
-
+	*/
 	return hBinding;
 }
 long toBigEndian(int value) 
@@ -457,21 +458,67 @@ int ChangeDSRMPassword(int rid, BYTE* hash, char* dcname)
 		wprintf(L"[-] SamrConnect Error : %08X %d\n", status, GetLastError());
 
 	}
+	/*
+	status = SamrConnect5(DCName, MAXIMUM_ALLOWED, 1, &inRevisionInfo, &outVersion, &outRevisionInfo, &hServer);
+	if (!NT_SUCCESS(status))
+
+	{
+		wprintf(L"[-] SamrConnect Error : %08X %d\n", status, GetLastError());
+		return 0;
+	}*/
+	/*status = SamrOpenDomain(hServer, MAXIMUM_ALLOWED, (PRPC_SID)domainsid, &hDomain);
+	if (!NT_SUCCESS(status)) {
+		wprintf(L"SamrOpenDomain Error: %08X %d\n", status, GetLastError());
+		return 0;
+	}
+	SAMPR_HANDLE u;
+
+	status = SamrOpenUser(hDomain, MAXIMUM_ALLOWED, rid, &u);
+	if (!NT_SUCCESS(status)) {
+		wprintf(L"[-] SamrOpenUser Error: %08X %d\n", status, GetLastError());
+		return 1;
+	}
+	*/
 	
 
 	unsigned char buffer[16], buffer1[16];
 	memset(buffer, 0, sizeof(buffer));
 	memset(buffer1, 0, sizeof(buffer));
 	status = RtlGetUserSessionKeyClientBinding(hServer, &hDomain, buffer);
+	//if (hDomain == NULL)
+		//printf("hdomain null\n");
+	//wprintf(L"[i] RtlGetUserSessionKeyClientBinding Error: %08X %d\n", status, GetLastError());
+	//DumpHex(buffer, 16);
 	
+	/*status = RtlGetUserSessionKeyClient(hDomain, buffer1);
+	wprintf(L"[i] RtlGetUserSessionKeyClient Error: %08X %d\n", status, GetLastError());
+	DumpHex(buffer1, 16);*/
+	
+	    /*status = RtlEncryptNtOwfPwdWithNtSesKey(hash, buffer, encpw);
+		wprintf(L"[-] RtlEncryptNtOwfPwdWithNtSesKey Error: %08X %d\n", status, GetLastError());
+		DumpHex(encpw, 16);
+	    status = RtlEncryptNtOwfPwdWithUserKey(hash, buffer, &encpw1);
+		wprintf(L"[-]  RtlEncryptNtOwfPwdWithUserKey Error: %08X %d\n", status, GetLastError());
+		DumpHex(encpw1, 16);
+	*/
 		DWORD index = 0;
+		status = RtlEncryptNtOwfPwdWithIndex(hash, &rid, &encpw2);
+		//wprintf(L"[-]   RtlEncryptNtOwfPwdWithIndex Error: %08X %d\n", status, GetLastError());
+		//DumpHex(encpw2, 16);
+		
 	
+	//memcpy(&us.Internal4.UserPassword, encpw, 16);
+/*	status = SamrSetInformationUser2(u, (USER_INFORMATION_CLASS)18, &us);
+	if (!NT_SUCCESS(status)) {
+		wprintf(L"[-] SamrSetInformationUser2 Error: %08X %d\n", status, GetLastError());
+		return 1;
+	}*/
 		
 	status = SamrSetDSRMPassword(hServer, &rpcString, rid, encpw2);
 	if(!status)
 		wprintf(L"[*] SamrSetDSRMPassword Success!!!: %08X\n", status);
 	else
-		wprintf(L"[-] SamrSetDSRMPassword error: %08X\n", status);
+		wprintf(L"[*] SamrSetDSRMPassword error: %08X\n", status);
 
 
 	return 1;
