@@ -47,6 +47,10 @@ In this example:
 - The domain to connect to is `mydomain.local`.
 - The domain controller to connect to is `dc1.mydomain.local`.
 - The target account `target_user` will have their password changed to `newpassword123`.
+
+To change the password of DSRM, which is th elocal administraor on the Domain Controllers stored in local SAM:
+`chgpass.exe -t **DSRM** -m "" -u admin -p adminpassword -d mydomain.local -c dc1.mydomain.local`
+In this scase the DSRM password will be set to empty as the password valdiation criteria are skipped ;)
 ## Warning
 chgpass uses SamrSetInformationUser2 (UserClass 18) for setting the NTLM password. It will zero out the kerberos keys and in case of a computer account it will break the domain join.
 ## License
