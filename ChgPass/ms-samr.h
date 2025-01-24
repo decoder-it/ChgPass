@@ -1047,7 +1047,7 @@ extern "C" {
     typedef /* [switch_type] */ union _SAM_VALIDATE_INPUT_ARG
     {
         /* [case()] */ SAM_VALIDATE_AUTHENTICATION_INPUT_ARG ValidateAuthenticationInput;
-        /* [case()] */ SAM_VALIDATE_PASSWORD_CHANGE_INPUT_ARG ValidatePasswordChangeInput;
+        /* [case()] */ SAM_VALIDATE_PASSWORD_CHANGE_INPUT_ARG ;
         /* [case()] */ SAM_VALIDATE_PASSWORD_RESET_INPUT_ARG ValidatePasswordResetInput;
     } 	SAM_VALIDATE_INPUT_ARG;
 
