@@ -7,7 +7,7 @@ This tool can be used when you have the necessary permissions on the objects but
 
 To get the help message and list of arguments, run the following command:
 
-chgpass.exe -h
+`chgpass.exe -h`
 
 
 ### Command-Line Arguments
