@@ -1,7 +1,7 @@
 # CHGPass Tool
 
 `chgpass.exe` is a Windows standalone executable tool that allows you to change the password of user/computer accounts in Active Directory (AD)  via MS-SAMR protocol. <br>
-This tool can be used when you have the necessary permissions on the objects but need a simple way to set passwords using a standalone exe the command line.
+This tool can be used when you have the necessary permissions on the objects but need a simple way to set passwords using a standalone exe command line.
 
 ## Usage
 
