@@ -376,6 +376,7 @@ int ChangeThePassword(int rid, BYTE *hash, char *dcname, BYTE *domainsid)
 
 	status = SamrOpenUser(hDomain, MAXIMUM_ALLOWED,rid, &u);
 	if (!NT_SUCCESS(status)) {
+		
 		wprintf(L"[-] SamrOpenUser Error: %08X %d\n", status, GetLastError());
 		return 1;
 	}
@@ -438,6 +439,27 @@ void SetRpcUnicodeString(RPC_UNICODE_STRING* rpcString, const wchar_t* value) {
 	// Copy the string into the buffer
 	memcpy(rpcString->Buffer, value, length);
 }
+typedef struct _USER_INFO_1008X {
+	LPWSTR usri1008_password;  // The password to be set
+} USER_INFO_1008X;
+void ChangePassword(const wchar_t* server, const wchar_t* username, const wchar_t* new_password) {
+	// User info structure for setting password
+	USER_INFO_1008X userInfo;
+	NET_API_STATUS ret;
+
+	// Initialize the structure with the new password
+	userInfo.usri1008_password = (wchar_t*)new_password;
+
+	// Call NetUserSetInfo to update the password
+	ret= NetUserSetInfo(server, username, 1003, (LPBYTE)&userInfo, NULL);
+
+	if (!ret) {
+		wprintf(L"[*] Password changed successfully for user %s on %s\n", username, server);
+	}
+	else {
+		wprintf(L"[!] Failed to change password. Error code: %d\n", ret);
+	}
+}
 int ChangeDSRMPassword(int rid, BYTE* hash, char* dcname)
 {
 	SAMPR_HANDLE  hServer, hDomain;
@@ -464,7 +486,7 @@ int ChangeDSRMPassword(int rid, BYTE* hash, char* dcname)
 		return 1;
 	}
 		
-	status = SamrSetDSRMPassword(hServer, &rpcString, rid, encpw);
+	status = SamrSetDSRMPassword(hServer, NULL, rid, encpw);
 	if(!status)
 		wprintf(L"[*] SamrSetDSRMPassword Success!!!: %08X\n", status);
 	else
@@ -565,15 +587,18 @@ BOOL LogInAndImpersonateUser(
 }
 void usage() {
 	wprintf(L"\n\n** chgpass - @decoder_it 2025 **\n\nUsage:\n");
-	wprintf(L"  chgpass.exe -u <user> -p <password> -d <domain> -t <target_user> -m <new_password> -c <domain_controller>\n");
+	wprintf(L"chgpass.exe [-u <user>] [-p <password>] [-d <domain>] -t <target_user> -m <new_password> [-c <domain_controller>] [-l <target_server>]\n");
 	wprintf(L"\nMandatory Arguments:\n");
-	wprintf(L"  -t <target_account>     Specify the target account to modify.\n");
-	wprintf(L"  -m <new_password>    Specify the new password for the target account.\n");
+	wprintf(L"  -t <target_account>     Specify the target account to modify. Use **DSRM** for changing DSRM password, can be blank too\n");
+	wprintf(L"  -m <target_password>    Specify the target password to modify.\n");
+	
+	
 	wprintf(L"\nOptional Arguments:\n");
-	wprintf(L"  -u <user>            Specify the username for authentication.\n");
-	wprintf(L"  -p <password>        Specify the password for authentication.\n");
-	wprintf(L"  -d <domain>          Specify the domain to connect to.\n");
-	wprintf(L"  -c <domain_controller> Specify the name of the domain controller to connect to.\n");
+	wprintf(L"  -l <target server>      Specify the destination server for target account\n");
+	wprintf(L"  -u <user>               Specify the alternate username for authentication.\n");
+	wprintf(L"  -p <password>           Specify the alternate password for authentication.\n");
+	wprintf(L"  -d <domain>             Specify the domain name to authenticate to.\n");
+	wprintf(L"  -c <domain_controller>  Specify the name of the domain controller to connect to.\n");
 	exit(1);
 	
 }
@@ -590,7 +615,6 @@ void HexStringToByteArray(const char* hexString, unsigned char* byteArray, size_
 		byteArray[i] = (unsigned char)strtol(byteChars, NULL, 16);
 	}
 }
-
 int main(int argc , char **argv)
 {
 	
@@ -601,11 +625,13 @@ int main(int argc , char **argv)
 	char* targetuser=NULL;
 	char* targetnewpass=NULL;
 	char* domain = NULL;
+	char* targetserver = NULL;
+	wchar_t wtargetserver[256], wtargetuser[256], wtargetnewpass[256];
 	memset(DCName, 0, sizeof(DCName));
 	BYTE hash[16], b[16];
 	DWORD index = 0;
 	
-
+	
 	while ((argc > 1) && (argv[1][0] == '-'))
 	{
 		switch (argv[1][1])
@@ -641,6 +667,11 @@ int main(int argc , char **argv)
 			--argc;
 			targetnewpass = argv[1];
 			break;
+		case 'l':
+			++argv;
+			--argc;
+			targetserver = argv[1];
+			break;
 		case 'c':
 			++argv;
 			--argc;
@@ -673,16 +704,20 @@ int main(int argc , char **argv)
 	
 	
 	
-	int rid = 0;
+	int rid = 500;
 	int len=0;
+	
 	if (strlen(DCName) == 0) {
 		if (!GetCurrentDomainController())
 			exit(1);
 	}
 	else
 	{
-		printf("[*] Targeting Domain Controller: %s\n", DCName);
+		printf("[*] Targeting Domain Controller/Server: %s\n", DCName);
+		
 	}
+	if (targetserver == NULL)
+		targetserver = &DCName;
 	if (strlen(targetnewpass) > 0)
 	{
 		if (!CalculateNTLMHash(targetnewpass, (BYTE*)&hash))
@@ -703,26 +738,13 @@ int main(int argc , char **argv)
 	if (!strcmp(targetuser, "**DSRM**"))
 	{
 		printf("[*] Resetting DSRM password on: %s\n", DCName);
-		ChangeDSRMPassword(500, hash, DCName);
+		ChangeDSRMPassword(rid, hash, DCName);
 		exit(0);
 	}
-	if (!GetDomainSidAndUserRid(DCName, targetuser, DomainName, (BYTE*)&domainsid, &rid))
-		exit(1);
-	//PrintSID(domainsid);
-	//printf("[*] RID for target account: %s is: %d\n",targetuser, rid);
-	
-	//PSID binarySid = NULL; // Pointer to hold the binary SID
-
-	
-	//ConvertStringSidToSidA("S-1-5-21-3800782951-3972217510-415638672", &domainsid);
-	
-	
-	
-	
-	//HANDLE hBind = PSAMPR_SERVER_NAME_bind();
-	//wprintf(L"[i] bind %d\n", GetLastError());
-
-	ChangeThePassword(rid, hash, DCName,domainsid);
+	mbstowcs(wtargetserver, targetserver, strlen(targetserver)+1);
+	mbstowcs(wtargetuser, targetuser, strlen(targetuser)+1);
+	mbstowcs(wtargetnewpass, targetnewpass, strlen(targetnewpass)+1);
+	ChangePassword(wtargetserver, wtargetuser, wtargetnewpass);
     
 
 	return 0;
