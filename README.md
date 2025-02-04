@@ -12,11 +12,11 @@ chgpass.exe -h
 
 ### Command-Line Arguments
 
-chgpass.exe -u <user> -p <password> -d <domain> -t <target_account> -m <new_password> -c <domain_controller>
+`chgpass.exe [-u <user>] [-p <password>] [-d <domain>] -t <target_user> -m <new_password> [-c <domain_controller>] [-l <target_server>]`
 ### Mandatory Arguments:
 
 - `-t <target_account>`  
-  Specify the target account whose password you want to modify.
+  Specify the target account whose password you want to modify. If you want to cnage the DSRM password specify `**DSRM**` (case sensitive) as target_account 
 
 - `-m <new_password>`  
   Specify the new password for the target account.
@@ -30,15 +30,16 @@ chgpass.exe -u <user> -p <password> -d <domain> -t <target_account> -m <new_pass
   Specify the password for authentication.
 
 - `-d <domain>`  
-  Specify the domain to connect to.
+  Specify the domain to authenticate to.
 
 - `-c <domain_controller>`  
   Specify the name of the domain controller to connect to.
+- `-l <server>`  
+  Specify the name of the server to connect to.
 
 ## Example Usage
 
-To change the password of a target user `target_account`:<br><br>
-
+To change the password of a target user `target_account` using an alternate account:<br>
 `chgpass.exe -t target_user -m newpassword123 -u admin -p adminpassword -d mydomain.local -c dc1.mydomain.local`
 <br>
 In this example:
@@ -48,14 +49,20 @@ In this example:
 - The domain controller to connect to is `dc1.mydomain.local`.
 - The target account `target_user` will have their password changed to `newpassword123`.
 
-To change the password of DSRM mode, which is the local administrator account on the Domain Controllers stored in local SAM:
-<br>
+<br><br>To change the password of a local account of  a remote domain joined machine:<br>
+`chgpass.exe -t localuser1 -m Superp@ss! -l remoteserver`
+<br><br>
+To change the password of a local account of  a remote domain joined machine from a non domain joined machine:<br>
+`chgpass.exe -t localuser1 -m newpassword123 -u admin -p adminpassword -d mydomain.local -c dc1.mydomain.local -l remoteserver` 
+<br><br>
+To change the password of DSRM mode, which is the local administrator account on the Domain Controllers stored in local SAM:<br>
 `chgpass.exe -t **DSRM** -m "" -u admin -p adminpassword -d mydomain.local -c dc1.mydomain.local`
-<br>
+<br><br>
 In this case the DSRM password will be set to empty as the password valdiation criteria are skipped ;)
 <br>
+
 ## Warning
-chgpass uses SamrSetInformationUser2 (UserClass 18) for setting the NTLM password. It will zero out the kerberos keys and in case of a computer account it will break the domain join.
+In case of resetting computer account password it will break the domain join.
 ## License
 
 This tool is provided as-is with no warranty. Feel free to use and modify it as needed.
