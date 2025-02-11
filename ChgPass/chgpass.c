@@ -7,7 +7,7 @@
 #include <sspi.h>
 #include <wincrypt.h>
 #include <ctype.h>
-
+#include <psapi.h>
 #include <dsgetdc.h>
 #include <WinBase.h>
 #pragma comment(lib, "advapi32.lib")
@@ -16,6 +16,7 @@
 #pragma comment(lib, "Secur32.lib")
 #pragma comment(lib, "Ntdsapi.lib")
 #pragma comment(lib, "netapi32.lib") 
+#pragma comment(lib, "bcrypt.lib")
 #pragma warning(disable : 4996)
 #define MAXIMUM_ALLOWED 0x02000000
 #define RtlEncryptBlock						SystemFunction001 // DES
@@ -115,8 +116,41 @@ char DCName[256];
 char DCIp[65];
 
 char DomainName[256];
+#define ENC_KEY_SIZE 32
+#define MAC_KEY_SIZE 64
+#define AES_BLOCK_SIZE 16
+#define SAM_MAX_PASSWORD_LENGTH 256
+#define SHA512_DIGEST_SIZE 64
+#define SAM_AES256_ENC_KEY_STRING "Microsoft SAM encryption key AEAD-AES-256-CBC-HMAC-SHA512 16"
+#define SAM_AES256_MAC_KEY_STRING "Microsoft SAM MAC key AEAD-AES-256-CBC-HMAC-SHA512 16"
+UCHAR CEK[16]; // Random key for encryption (CEK)
+UCHAR* gCipher;
+BCRYPT_KEY_HANDLE ghKey = NULL;
+#define AES_BUFFER_SIZE 514
+typedef struct _SAMPR_USER_PASSWORD_AES {
+	USHORT PasswordLength; // Length of the password in bytes
+	WCHAR Buffer[SAM_MAX_PASSWORD_LENGTH]; // UTF-16 encoded password
 
 
+} SAMPR_USER_PASSWORD_AES, * PSAMPR_USER_PASSWORD_AES;
+typedef NTSTATUS(WINAPI* SamrEncryptClearPasswordWithSessionKeyAES)(
+	SAMPR_HANDLE DomainHandle,
+	SAMPR_USER_PASSWORD_AES* ClearTextPassword,
+	SAMPR_ENCRYPTED_PASSWORD_AES* EncryptedPassword
+	);
+void* FindPattern(void* base, size_t size, const unsigned char* pattern, size_t patternSize) {
+	unsigned char* start = (unsigned char*)base;
+	unsigned char* end = start + size - patternSize;
+
+	for (unsigned char* current = start; current < end; current++) {
+		if (memcmp(current, pattern, patternSize) == 0) {
+			printf("[*] Found address for SamrEncryptClearPasswordWithSessionKeyAES at:%p\n", current);
+			return current;// 0x00007ffb2908596c;// 0x00007ffb29085e5c;  // Return the address of the match
+		}
+	}
+
+	return  NULL;  // Pattern not found
+}
 void RemoveBackslashes(char* str) 
 {
 	char* src = str, * dst = str;
@@ -173,6 +207,71 @@ BOOL GetCurrentDomainController()
 	free(pDcInfo);
 	return 1;
 }
+void generate_random_bytes(UCHAR* buffer, size_t size) {
+	srand((unsigned int)time(NULL));
+	for (size_t i = 0; i < size; i++) {
+		buffer[i] = rand() % 256;
+	}
+}
+NTSTATUS derive_hmac_sha512(UCHAR* key, ULONG key_len, const char* data, ULONG data_len, UCHAR* output, ULONG output_len) {
+	BCRYPT_ALG_HANDLE hAlg = NULL;
+	BCRYPT_HASH_HANDLE hHash = NULL;
+	NTSTATUS status;
+	DWORD result_size;
+
+	status = BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA512_ALGORITHM, NULL, BCRYPT_ALG_HANDLE_HMAC_FLAG);
+	if (status != STATUS_SUCCESS) {
+		printf("status 0 %d\n", status);
+
+		return status;
+	}
+
+	status = BCryptCreateHash(hAlg, &hHash, NULL, 0, key, key_len, 0);
+	if (status != STATUS_SUCCESS) {
+		BCryptCloseAlgorithmProvider(hAlg, 0);
+		printf("status 1 %d\n", status);
+		return status;
+	}
+
+	status = BCryptHashData(hHash, (PUCHAR)data, data_len, 0);
+	if (status != STATUS_SUCCESS) {
+		BCryptDestroyHash(hHash);
+		BCryptCloseAlgorithmProvider(hAlg, 0);
+		printf("status 2 %d\n;", status);
+		return status;
+	}
+
+	status = BCryptFinishHash(hHash, output, output_len, 0);
+	printf("status 3 %d\n", status);
+	BCryptDestroyHash(hHash);
+	BCryptCloseAlgorithmProvider(hAlg, 0);
+
+	return status;
+}
+NTSTATUS hmac_sha512_authdata(UCHAR* mac_key, UCHAR* iv, PUCHAR cipher, ULONG cipher_len, UCHAR* auth_data) {
+	UCHAR version_byte = 0x01; // Example version byte
+	ULONG total_len = 1 + AES_BLOCK_SIZE + cipher_len + 1; // version + IV + Cipher + version length
+	PUCHAR auth_input = (PUCHAR)malloc(total_len);
+	printf("cyer len=%d totallen=%d\n", cipher_len, total_len);
+	if (!auth_input) {
+		return STATUS_NO_MEMORY;
+	}
+	//Let AuthData ::= HMAC-SHA-512(mac_key, versionbyte + IV + Cipher + versionbyte_length)
+	// 
+	// Concatenate version, IV, Cipher, and version length
+	auth_input[0] = version_byte;
+	memcpy(auth_input + 1, iv, AES_BLOCK_SIZE);
+	memcpy(auth_input + 1 + AES_BLOCK_SIZE, cipher, cipher_len);
+	auth_input[1 + AES_BLOCK_SIZE + cipher_len] = 1;// sizeof(version_byte);
+	//DumpHex(auth_input, 546);
+	//getchar();
+	// Generate HMAC
+	NTSTATUS status = derive_hmac_sha512(mac_key, MAC_KEY_SIZE, (char*)auth_input, total_len, auth_data, SHA512_DIGEST_SIZE);
+
+	free(auth_input);
+	return status;
+}
+
 void DumpHex(const void* data, size_t size) {
 	char ascii[17];
 	size_t i, j;
@@ -553,6 +652,299 @@ BOOL GetDomainSidAndUserRid(LPCSTR systemname,LPCSTR username, LPCSTR domainName
 
 	return TRUE;
 }
+#define MAX_PASS_LEN 0x200
+void KEEncryptDataWithAES(
+	PUCHAR plaintext,
+	ULONG plaintextSize,
+	PUCHAR iv,
+	PUCHAR key,
+	ULONG keySize,
+	PUCHAR* ciphertext,
+	ULONG* ciphertextSize)
+{
+	BCRYPT_ALG_HANDLE hAlgorithm = NULL;
+	BCRYPT_KEY_HANDLE hKey = NULL;
+	NTSTATUS status;
+	ULONG blockLength = 0, resultSize = 0;
+	PUCHAR outputBuffer = NULL;
+
+	*ciphertext = NULL;
+	*ciphertextSize = 0;
+
+	// Open an algorithm provider for AES
+	status = BCryptOpenAlgorithmProvider(&hAlgorithm, BCRYPT_AES_ALGORITHM, NULL, 0);
+	if (status != STATUS_SUCCESS) {
+		printf("[-] BCryptOpenAlgorithmProvider failed: 0x%x\n", status);
+		return;
+	}
+
+	// Get AES block size
+	status = BCryptGetProperty(hAlgorithm, BCRYPT_BLOCK_LENGTH, (PUCHAR)&blockLength, sizeof(ULONG), &resultSize, 0);
+	if (status != STATUS_SUCCESS || blockLength != 16) {
+		printf("[-] BCryptGetProperty failed or invalid block size: 0x%x\n", status);
+		BCryptCloseAlgorithmProvider(hAlgorithm, 0);
+		return;
+	}
+
+	// Set chaining mode to CBC
+	status = BCryptSetProperty(hAlgorithm, BCRYPT_CHAINING_MODE, (PUCHAR)BCRYPT_CHAIN_MODE_CBC, sizeof(BCRYPT_CHAIN_MODE_CBC), 0);
+	if (status != STATUS_SUCCESS) {
+		printf("[-] BCryptSetProperty failed: 0x%x\n", status);
+		BCryptCloseAlgorithmProvider(hAlgorithm, 0);
+		return;
+	}
+
+	// Generate a symmetric key
+	status = BCryptGenerateSymmetricKey(hAlgorithm, &ghKey, NULL, 0, key, keySize, 0);
+	if (status != STATUS_SUCCESS) {
+		printf("[-] BCryptGenerateSymmetricKey failed: 0x%x\n", status);
+		BCryptCloseAlgorithmProvider(hAlgorithm, 0);
+		return;
+	}
+
+	// Get required buffer size
+	status = BCryptEncrypt(ghKey, plaintext, plaintextSize, NULL, iv, blockLength, NULL, 0, ciphertextSize, BCRYPT_BLOCK_PADDING);
+	if (status != STATUS_SUCCESS) {
+		printf("[-] BCryptEncrypt (size query) failed: 0x%x\n", status);
+		BCryptDestroyKey(hKey);
+		BCryptCloseAlgorithmProvider(hAlgorithm, 0);
+		return;
+	}
+
+	// Allocate buffer for ciphertext
+	/*
+	outputBuffer = (PUCHAR)HeapAlloc(GetProcessHeap(), 0, *ciphertextSize);
+	if (!outputBuffer) {
+		printf("[-] Memory allocation failed\n");
+		BCryptDestroyKey(hKey);
+		BCryptCloseAlgorithmProvider(hAlgorithm, 0);
+		return;
+	}
+	*/
+	// Encrypt data
+
+	gCipher = (PUCHAR)HeapAlloc(GetProcessHeap(), 0, *ciphertextSize);
+	if (!gCipher) {
+		printf("[-] Memory allocation failed\n");
+		BCryptDestroyKey(hKey);
+		BCryptCloseAlgorithmProvider(hAlgorithm, 0);
+		return;
+	}
+
+
+	status = BCryptEncrypt(ghKey, plaintext, plaintextSize, NULL, iv, blockLength, gCipher, *ciphertextSize, ciphertextSize, BCRYPT_BLOCK_PADDING);
+	if (status != STATUS_SUCCESS) {
+		printf("[-] BCryptEncrypt failed: 0x%x\n", status);
+		HeapFree(GetProcessHeap(), 0, outputBuffer);
+		outputBuffer = NULL;
+		*ciphertextSize = 0;
+	}
+
+	*ciphertext = outputBuffer;
+	//ghKey = hKey;
+	// Cleanup
+	if (hKey) BCryptDestroyKey(hKey);
+	if (hAlgorithm) BCryptCloseAlgorithmProvider(hAlgorithm, 0);
+}
+
+int ChanegPasswordMoreComplexMode(int rid, BYTE* hash, char* dcname, BYTE* domainsid, wchar_t* password) {
+	NTSTATUS status;
+	SAMPR_USER_PASSWORD_AES userPassword;
+
+	UCHAR enc_key[ENC_KEY_SIZE];
+	UCHAR mac_key[MAC_KEY_SIZE];
+	UCHAR iv[AES_BLOCK_SIZE];
+	UCHAR iv2[AES_BLOCK_SIZE];
+	UCHAR cipher = NULL;
+	ULONG cipher_len;
+	SAMPR_HANDLE hServer, hDomain;
+	unsigned char AuthData[64];
+
+	SAMPR_USER_INFO_BUFFER us;
+	SAMPR_ENCRYPTED_PASSWORD_AES uaes, * pp;
+	SAMPR_REVISION_INFO inRevisionInfo, outRevisionInfo;
+	unsigned long outVersion;
+
+	unsigned char encpw[16];
+	status = SamrConnect5(NULL, MAXIMUM_ALLOWED, 1, &inRevisionInfo, &outVersion, &outRevisionInfo, &hServer);
+	if (!NT_SUCCESS(status))
+
+	{
+		wprintf(L"[-] SamrConnect Error : %08X %d\n", status, GetLastError());
+		return 0;
+	}
+	status = SamrOpenDomain(hServer, MAXIMUM_ALLOWED, (PRPC_SID)domainsid, &hDomain);
+	if (!NT_SUCCESS(status)) {
+		wprintf(L"SamrOpenDomain Error: %08X %d\n", status, GetLastError());
+		return 0;
+	}
+
+
+	SAMPR_HANDLE u;
+
+	status = SamrOpenUser(hDomain, MAXIMUM_ALLOWED, rid, &u);
+	if (!NT_SUCCESS(status)) {
+		wprintf(L"[-] SamrOpenUser Error: %08X %d\n", status, GetLastError());
+		return 1;
+	}
+
+	
+	status = RtlGetUserSessionKeyClient(hDomain, CEK);
+	if (!NT_SUCCESS(status)) {
+		wprintf(L"[-] RtlGetUserSessionKeyClient Error: %08X %d\n", status, GetLastError());
+		return 1;
+	}
+
+	
+
+	status = RtlGetUserSessionKeyClient(hServer, CEK);
+	if (!NT_SUCCESS(status)) {
+		wprintf(L"[-] RtlGetUserSessionKeyClient Error: %08X %d\n", status, GetLastError());
+		return 1;
+	}
+	status = RtlGetUserSessionKeyClient(u, CEK);
+	DumpHex(CEK, 16);
+	if (!NT_SUCCESS(status)) {
+		wprintf(L"[-] RtlGetUserSessionKeyClient Error: %08X %d\n", status, GetLastError());
+		return 1;
+	}
+	
+	UCHAR dummy[64];
+
+	derive_hmac_sha512(CEK, sizeof(CEK), SAM_AES256_ENC_KEY_STRING, 61, dummy, MAC_KEY_SIZE);
+	memcpy(enc_key, dummy, ENC_KEY_SIZE);
+	derive_hmac_sha512(CEK, sizeof(CEK), SAM_AES256_MAC_KEY_STRING, 54, mac_key, MAC_KEY_SIZE);
+	//py(tocrypt, password, wcslen(password));
+	UNICODE_STRING uString;
+
+
+	PUCHAR ciphertext = NULL;
+	ULONG ciphertextSize = 0;
+	UCHAR passwordBuffer[AES_BUFFER_SIZE] = { 0 };
+	USHORT passwordLength;
+	passwordLength = wcslen(password) * 2;
+	if (passwordLength >= 0x201) {
+		printf("[-] Password too long\n");
+		return;
+	}
+	memset(passwordBuffer, 0, AES_BUFFER_SIZE);
+	generate_random_bytes(passwordBuffer, AES_BUFFER_SIZE);
+	memcpy(&passwordBuffer[0], &passwordLength, sizeof(passwordLength));
+	//passwordBuffer[1] = 0;
+
+	memcpy(passwordBuffer + 2, password, passwordLength);
+	generate_random_bytes(iv, 16);
+	memcpy(iv2, iv, 16);
+	memset(&us, 0, sizeof(us));
+	DumpHex(iv, 16);
+	KEEncryptDataWithAES(&passwordBuffer[0], 514, iv, enc_key, 32, &ciphertext, &ciphertextSize);
+	if (status != STATUS_SUCCESS) {
+		printf("AES encryption failed: 0x%08x\n", status);
+		return 1;
+	}
+	status = hmac_sha512_authdata(mac_key, iv2, gCipher, 528, AuthData);
+	if (status != STATUS_SUCCESS) {
+		printf("HMAC generation failed: 0x%08x\n", status);
+		free(cipher);
+		return 1;
+	}
+	memcpy(us.Internal8.UserPassword.Salt, iv2, 16);
+	memcpy(us.Internal8.UserPassword.AuthData, AuthData, 64);
+	us.Internal8.UserPassword.cbCipher = 528;// cipher_len;
+	us.Internal8.UserPassword.PBKDF2Iterations = 0;
+	us.Internal8.I1.WhichFields = toBigEndian(1);
+	us.Internal8.UserPassword.Cipher = gCipher;
+
+	status = SamrSetInformationUser2(u, (USER_INFORMATION_CLASS)32, &us);
+
+	wprintf(L"[*] SamrSetInformationUser2: %08X\n", status);
+
+	return 0;
+}
+int ChanegPasswordComplexMode(int rid, BYTE* hash, char* dcname, BYTE* domainsid, wchar_t* newpass) {
+	NTSTATUS status;
+	SAMPR_USER_PASSWORD_AES* puserPassword = NULL;
+	SAMPR_USER_PASSWORD_AES userPassword;
+
+	UCHAR enc_key[ENC_KEY_SIZE];
+	UCHAR mac_key[MAC_KEY_SIZE];
+	UCHAR iv[AES_BLOCK_SIZE];
+	PUCHAR cipher = NULL;
+	ULONG cipher_len;
+	SAMPR_HANDLE hServer, hDomain;
+	unsigned char AuthData[64];
+
+	SAMPR_USER_INFO_BUFFER us;
+	SAMPR_ENCRYPTED_PASSWORD_AES uaes, * pp;
+	SAMPR_REVISION_INFO inRevisionInfo, outRevisionInfo;
+	unsigned long outVersion;
+
+	unsigned char encpw[16];
+	puserPassword = malloc(sizeof(SAMPR_USER_PASSWORD_AES));
+	status = SamrConnect5(NULL, MAXIMUM_ALLOWED, 1, &inRevisionInfo, &outVersion, &outRevisionInfo, &hServer);
+	if (!NT_SUCCESS(status))
+
+	{
+		wprintf(L"[-] SamrConnect Error : %08X %d\n", status, GetLastError());
+		return 0;
+	}
+	status = SamrOpenDomain(hServer, MAXIMUM_ALLOWED, (PRPC_SID)domainsid, &hDomain);
+	if (!NT_SUCCESS(status)) {
+		wprintf(L"SamrOpenDomain Error: %08X %d\n", status, GetLastError());
+		return 0;
+	}
+
+
+	SAMPR_HANDLE u;
+
+	status = SamrOpenUser(hDomain, MAXIMUM_ALLOWED, rid, &u);
+	if (!NT_SUCCESS(status)) {
+		wprintf(L"[-] SamrOpenUser Error: %08X %d\n", status, GetLastError());
+		return 1;
+	}
+	BYTE pattern[] = { 0x40, 0x53, 0x55, 0x56, 0x57, 0x41, 0x57, 0x48, 0x83, 0xEC,0x70,0x48,0x8b };
+	char mask[] = "xxxxxxxxxxxxx";  // Adjust for wildcard bytes
+
+	// Locate the function address in memory
+	//void* pFunc = FindPattern(base, size, pattern, mask);
+	HMODULE hSamlib = LoadLibraryA("c:\\windows\\system32\\samlib.dll");
+	if (!hSamlib) {
+		printf("[-] Failed to load samlib.dll (Error: %lu)\n", GetLastError());
+		return 1;
+	}
+	MODULEINFO moduleInfo;
+	if (GetModuleInformation(GetCurrentProcess(), hSamlib, &moduleInfo, sizeof(moduleInfo)) == 0) {
+		printf("[-] Failed to get module information\n");
+		return -1;
+	}
+
+	void* pFunc = FindPattern(moduleInfo.lpBaseOfDll, moduleInfo.SizeOfImage, pattern, 13);
+	if (!pFunc) {
+		printf("[-] Failed to locate function in memory.\n");
+		FreeLibrary(hSamlib);
+		return 1;
+	}
+
+	void* pFunc1 = 0x00007FFB29085E5C;
+
+	SamrEncryptClearPasswordWithSessionKeyAES SamiEncrypt = (SamrEncryptClearPasswordWithSessionKeyAES)pFunc;
+	UNICODE_STRING uString;
+	
+	RtlInitUnicodeString(&uString, newpass);
+	status = SamiEncrypt(u, &uString, &uaes);
+		wprintf(L"[*] SamrEncryptClearPasswordWithSessionKeyAES status %08X\n", status);
+	memset(&us, 0, sizeof(us));
+	memcpy(us.Internal8.UserPassword.Salt, uaes.Salt, 16);
+	memcpy(us.Internal8.UserPassword.AuthData, uaes.AuthData, 64);
+	us.Internal8.UserPassword.cbCipher = uaes.cbCipher;
+	us.Internal8.UserPassword.PBKDF2Iterations = 0;
+	us.Internal8.I1.WhichFields = toBigEndian(1);// oBigEndian(0x40000000);
+	us.Internal8.UserPassword.Cipher = uaes.Cipher;// cipherbuff;// cipher;// encryptedPassword.Cipher;// encryptedPassword.Cipher;
+		status = SamrSetInformationUser2(u, (USER_INFORMATION_CLASS)32, &us);
+	wprintf(L"[*] SamrSetInformationUser2 status: %08X\n", status);
+
+		return 0;
+}
 BOOL LogInAndImpersonateUser(
 	LPCSTR username,    // Username
 	LPCSTR password,    // Password
@@ -618,7 +1010,7 @@ void HexStringToByteArray(const char* hexString, unsigned char* byteArray, size_
 int main(int argc , char **argv)
 {
 	
-	//const char* password = "Password123";
+	
 	BYTE domainsid[SECURITY_MAX_SID_SIZE];
 	char* user=NULL;
 	char* password=NULL;
@@ -745,7 +1137,15 @@ int main(int argc , char **argv)
 	mbstowcs(wtargetuser, targetuser, strlen(targetuser)+1);
 	mbstowcs(wtargetnewpass, targetnewpass, strlen(targetnewpass)+1);
 	ChangePassword(wtargetserver, wtargetuser, wtargetnewpass);
-    
+	
+	/*
+	if (!GetDomainSidAndUserRid(DCName, targetuser, DomainName, (BYTE*)&domainsid, &rid))
+		exit(1);
+	PrintSID(domainsid);
+	printf("[*] RID for target account: %s is: %d\n", targetuser, rid);
 
+	ChangePasswordComplexMode(rid, hash, DCName, domainsid, wtargetnewpass);
+	ChangePasswordMoreComplexMode(rid, hash, DCName, domainsid, wtargetnewpass);
+	*/
 	return 0;
 }
